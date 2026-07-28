@@ -19,27 +19,28 @@
 // @run-at       document-idle
 // ==/UserScript==
 
+
 (function () {
   'use strict';
-
+ 
   // ---- Wait for bcModSDK to be present (load it first, or via FUSAM) ----
   if (typeof bcModSDK === 'undefined') {
     console.error('[FinDom] bcModSDK not found. Load bondage-club-mod-sdk before this script.');
     return;
   }
-
+ 
   const modApi = bcModSDK.registerMod({
     name: 'FinDomAddon',
     fullName: 'FinDom Tribute Addon',
     version: '0.1.0',
   });
-
+ 
   // ------------------------------------------------------------------
   // Config: who you tribute to, and which actions auto-trigger a payment
   // Stored in Player.ExtensionSettings so it persists with the account
   // ------------------------------------------------------------------
   const SETTINGS_KEY = 'FinDomAddon';
-
+ 
   function getSettings() {
     if (!Player.ExtensionSettings[SETTINGS_KEY]) {
       Player.ExtensionSettings[SETTINGS_KEY] = JSON.stringify({
@@ -56,12 +57,12 @@
     }
     return JSON.parse(Player.ExtensionSettings[SETTINGS_KEY]);
   }
-
+ 
   function saveSettings(settings) {
     Player.ExtensionSettings[SETTINGS_KEY] = JSON.stringify(settings);
     ServerPlayerExtensionSettingsSync(SETTINGS_KEY);
   }
-
+ 
   // ------------------------------------------------------------------
   // Core: perform a tribute. Deducts Player.Money, announces it in
   // chat (forced disclosure), and sends a protocol message so the
@@ -80,11 +81,11 @@
       ChatRoomSendLocal(`FinDom: insufficient funds (have ${Player.Money}, need ${amount}).`);
       return;
     }
-
+ 
     // 1. Deduct locally and sync
     Player.Money -= amount;
     ServerPlayerSync();
-
+ 
     // 2. Forced public disclosure message — this is the "must say
     //    how much and to whom" mechanic
     const name = settings.mistressName || `#${settings.mistressMemberNumber}`;
@@ -92,7 +93,7 @@
       Content: `${Player.Name} sends ${amount} in tribute to ${name}${reasonText ? ` (${reasonText})` : ''}.`,
       Type: 'Emote',
     });
-
+ 
     // 3. Send a hidden protocol message the recipient's client parses
     //    to credit their Money. (Both parties need a compatible mod;
     //    mirrors how BCTweaks' /send-money handshake works.)
@@ -108,7 +109,7 @@
       Target: settings.mistressMemberNumber,
     });
   }
-
+ 
   // ------------------------------------------------------------------
   // Receive side: credit incoming tributes addressed to you
   // ------------------------------------------------------------------
@@ -129,7 +130,7 @@
     }
     return next(args);
   });
-
+ 
   // ------------------------------------------------------------------
   // Auto-triggers: hook whichever BC functions correspond to the
   // actions you want to force payment on. ActivityOrgasmStart is a
@@ -144,35 +145,42 @@
     }
     return result;
   });
-
+ 
   // ------------------------------------------------------------------
   // Chat commands
   // ------------------------------------------------------------------
   modApi.hookFunction('ChatRoomSendChat', 5, (args, next) => {
     const el = document.getElementById('InputChat');
     const msg = el ? el.value.trim() : '';
-
-    if (msg.startsWith('/tributeto ')) {
+    console.log('[FinDom DEBUG] hook fired. args:', args, 'InputChat value:', msg);
+ 
+    if (msg === '/tributeto' || msg.startsWith('/tributeto ')) {
       const num = parseInt(msg.split(' ')[1], 10);
       if (!isNaN(num)) {
         const settings = getSettings();
         settings.mistressMemberNumber = num;
         saveSettings(settings);
         ChatRoomSendLocal(`FinDom: tribute recipient set to #${num}.`);
+      } else {
+        ChatRoomSendLocal('FinDom: usage is /tributeto <MemberNumber>, e.g. /tributeto 123456');
       }
       el.value = '';
       return;
     }
-
-    if (msg.startsWith('/tribute ')) {
+ 
+    if (msg === '/tribute' || msg.startsWith('/tribute ')) {
       const parts = msg.split(' ');
       const amount = parseInt(parts[1], 10);
       const reason = parts.slice(2).join(' ');
-      if (!isNaN(amount)) sendTribute(amount, reason);
+      if (!isNaN(amount)) {
+        sendTribute(amount, reason);
+      } else {
+        ChatRoomSendLocal('FinDom: usage is /tribute <amount> [reason], e.g. /tribute 50 lost a bet');
+      }
       el.value = '';
       return;
     }
-
+ 
     if (msg.startsWith('/tributeoff')) {
       const settings = getSettings();
       settings.enabled = false;
@@ -181,7 +189,7 @@
       el.value = '';
       return;
     }
-
+ 
     if (msg.startsWith('/tributeon')) {
       const settings = getSettings();
       settings.enabled = true;
@@ -190,9 +198,10 @@
       el.value = '';
       return;
     }
-
+ 
     return next(args);
   });
-
+ 
   console.log('[FinDom] Addon loaded. Commands: /tributeto <num>, /tribute <amount> [reason], /tributeon, /tributeoff');
 })();
+ 
