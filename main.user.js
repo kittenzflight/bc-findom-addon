@@ -1,7 +1,18 @@
 // ==UserScript==
+// @require https://raw.githubusercontent.com/Jomshir98/bondage-club-mod-sdk/master/dist/bcModSdk.js
 // @name         FinDom Addon for Bondage Club
 // @namespace    https://example.com/
 // @version      0.1.0
+//author    kittenzflight
+// @supportURL https://github.com/kittenzflight/bc-findom-addon
+// @match https://bondageprojects.elementfx.com/*
+// @match https://www.bondageprojects.elementfx.com/*
+// @match https://bondage-europe.com/*
+// @match https://www.bondage-europe.com/*
+// @match https://bondage-asia.com/*
+// @match https://www.bondage-asia.com/*
+// @match https://bondageprojects.com/*
+// @match https://www.bondageprojects.com/*
 // @description  Forced-disclosure tribute system + auto-triggered in-game Money transfers for Bondage Club
 // @match        *://*.bondageprojects.elementfx.com/*
 // @grant        none
