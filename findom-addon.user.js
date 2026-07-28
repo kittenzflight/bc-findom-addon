@@ -1,7 +1,7 @@
 // ==UserScript==
 // @require https://raw.githubusercontent.com/Jomshir98/bondage-club-mod-sdk/master/dist/bcModSdk.js
 // @name         FinDom Addon for Bondage Club
-// @namespace    https://example.com/
+// @namespace    https://www.bondageprojects.com/
 // @version      0.1.0
 //author    kittenzflight
 // @supportURL https://github.com/kittenzflight/bc-findom-addon
