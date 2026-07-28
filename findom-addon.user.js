@@ -13,7 +13,6 @@
 // @match https://bondageprojects.com/*
 // @match https://www.bondageprojects.com/*
 // @description  Forced-disclosure tribute system + auto-triggered in-game Money transfers for Bondage Club
-// @match        *://*.bondageprojects.elementfx.com/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
