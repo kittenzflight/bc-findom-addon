@@ -1,0 +1,187 @@
+// ==UserScript==
+// @name         FinDom Addon for Bondage Club
+// @namespace    https://example.com/
+// @version      0.1.0
+// @description  Forced-disclosure tribute system + auto-triggered in-game Money transfers for Bondage Club
+// @match        *://*.bondageprojects.elementfx.com/*
+// @grant        none
+// @run-at       document-idle
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  // ---- Wait for bcModSDK to be present (load it first, or via FUSAM) ----
+  if (typeof bcModSDK === 'undefined') {
+    console.error('[FinDom] bcModSDK not found. Load bondage-club-mod-sdk before this script.');
+    return;
+  }
+
+  const modApi = bcModSDK.registerMod({
+    name: 'FinDomAddon',
+    fullName: 'FinDom Tribute Addon',
+    version: '0.1.0',
+  });
+
+  // ------------------------------------------------------------------
+  // Config: who you tribute to, and which actions auto-trigger a payment
+  // Stored in Player.ExtensionSettings so it persists with the account
+  // ------------------------------------------------------------------
+  const SETTINGS_KEY = 'FinDomAddon';
+
+  function getSettings() {
+    if (!Player.ExtensionSettings[SETTINGS_KEY]) {
+      Player.ExtensionSettings[SETTINGS_KEY] = JSON.stringify({
+        mistressMemberNumber: null, // set via /tributeto <number>
+        mistressName: null,
+        triggers: {
+          orgasm: 25,      // Money auto-sent on orgasm
+          enterRoom: 0,    // Money auto-sent on entering mistress's room (0 = off)
+          struggleFail: 0, // etc. Add more trigger keys as you like.
+        },
+        enabled: true,
+      });
+      ServerPlayerExtensionSettingsSync(SETTINGS_KEY);
+    }
+    return JSON.parse(Player.ExtensionSettings[SETTINGS_KEY]);
+  }
+
+  function saveSettings(settings) {
+    Player.ExtensionSettings[SETTINGS_KEY] = JSON.stringify(settings);
+    ServerPlayerExtensionSettingsSync(SETTINGS_KEY);
+  }
+
+  // ------------------------------------------------------------------
+  // Core: perform a tribute. Deducts Player.Money, announces it in
+  // chat (forced disclosure), and sends a protocol message so the
+  // recipient's client (if also running this addon) credits them.
+  // ------------------------------------------------------------------
+  function sendTribute(amount, reasonText) {
+    const settings = getSettings();
+    if (!settings.enabled) return;
+    if (!settings.mistressMemberNumber) {
+      ChatRoomSendLocal('FinDom: no tribute recipient set. Use /tributeto <MemberNumber>.');
+      return;
+    }
+    amount = Math.max(0, Math.floor(amount));
+    if (amount <= 0) return;
+    if (Player.Money < amount) {
+      ChatRoomSendLocal(`FinDom: insufficient funds (have ${Player.Money}, need ${amount}).`);
+      return;
+    }
+
+    // 1. Deduct locally and sync
+    Player.Money -= amount;
+    ServerPlayerSync();
+
+    // 2. Forced public disclosure message — this is the "must say
+    //    how much and to whom" mechanic
+    const name = settings.mistressName || `#${settings.mistressMemberNumber}`;
+    ServerSend('ChatRoomChat', {
+      Content: `${Player.Name} sends ${amount} in tribute to ${name}${reasonText ? ` (${reasonText})` : ''}.`,
+      Type: 'Emote',
+    });
+
+    // 3. Send a hidden protocol message the recipient's client parses
+    //    to credit their Money. (Both parties need a compatible mod;
+    //    mirrors how BCTweaks' /send-money handshake works.)
+    ServerSend('ChatRoomChat', {
+      Content: JSON.stringify({
+        FinDomTribute: true,
+        From: Player.MemberNumber,
+        To: settings.mistressMemberNumber,
+        Amount: amount,
+        Reason: reasonText || '',
+      }),
+      Type: 'Hidden',
+      Target: settings.mistressMemberNumber,
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // Receive side: credit incoming tributes addressed to you
+  // ------------------------------------------------------------------
+  modApi.hookFunction('ChatRoomMessage', 0, (args, next) => {
+    const data = args[0];
+    if (data && data.Type === 'Hidden' && data.Content) {
+      try {
+        const parsed = JSON.parse(data.Content);
+        if (parsed && parsed.FinDomTribute && parsed.To === Player.MemberNumber) {
+          Player.Money += parsed.Amount;
+          ServerPlayerSync();
+          ChatRoomSendLocal(`FinDom: received ${parsed.Amount} tribute from #${parsed.From}${parsed.Reason ? ` (${parsed.Reason})` : ''}.`);
+          return; // swallow the hidden message, don't pass to normal chat handling
+        }
+      } catch (e) {
+        // not our message, fall through
+      }
+    }
+    return next(args);
+  });
+
+  // ------------------------------------------------------------------
+  // Auto-triggers: hook whichever BC functions correspond to the
+  // actions you want to force payment on. ActivityOrgasmStart is a
+  // reasonable hook point; adjust to the actual function name/args
+  // for your BC build (check the source you're running against).
+  // ------------------------------------------------------------------
+  modApi.hookFunction('ActivityOrgasmStart', 0, (args, next) => {
+    const result = next(args);
+    const settings = getSettings();
+    if (settings.enabled && settings.triggers.orgasm > 0) {
+      sendTribute(settings.triggers.orgasm, 'orgasm');
+    }
+    return result;
+  });
+
+  // ------------------------------------------------------------------
+  // Chat commands
+  // ------------------------------------------------------------------
+  modApi.hookFunction('ChatRoomSendChat', 5, (args, next) => {
+    const el = document.getElementById('InputChat');
+    const msg = el ? el.value.trim() : '';
+
+    if (msg.startsWith('/tributeto ')) {
+      const num = parseInt(msg.split(' ')[1], 10);
+      if (!isNaN(num)) {
+        const settings = getSettings();
+        settings.mistressMemberNumber = num;
+        saveSettings(settings);
+        ChatRoomSendLocal(`FinDom: tribute recipient set to #${num}.`);
+      }
+      el.value = '';
+      return;
+    }
+
+    if (msg.startsWith('/tribute ')) {
+      const parts = msg.split(' ');
+      const amount = parseInt(parts[1], 10);
+      const reason = parts.slice(2).join(' ');
+      if (!isNaN(amount)) sendTribute(amount, reason);
+      el.value = '';
+      return;
+    }
+
+    if (msg.startsWith('/tributeoff')) {
+      const settings = getSettings();
+      settings.enabled = false;
+      saveSettings(settings);
+      ChatRoomSendLocal('FinDom: auto-tributes disabled.');
+      el.value = '';
+      return;
+    }
+
+    if (msg.startsWith('/tributeon')) {
+      const settings = getSettings();
+      settings.enabled = true;
+      saveSettings(settings);
+      ChatRoomSendLocal('FinDom: auto-tributes enabled.');
+      el.value = '';
+      return;
+    }
+
+    return next(args);
+  });
+
+  console.log('[FinDom] Addon loaded. Commands: /tributeto <num>, /tribute <amount> [reason], /tributeon, /tributeoff');
+})();
